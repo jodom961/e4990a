@@ -241,6 +241,8 @@ def run_sweep(inst, filename, cfg):
     ydims = number_of_points, cfg.number_of_intervals
     yx = numpy.zeros(ydims, dtype=numpy.float32)
     yr = numpy.zeros(ydims, dtype=numpy.float32)
+    oscillator_current_measurement = numpy.zeros(ydims, dtype=numpy.float32)
+    oscillator_voltage_measurement = numpy.zeros(ydims, dtype=numpy.float32)
     if cfg.plotting_enabled:
         pyy = PlotYY(x)
     start_time = time.time()
@@ -257,11 +259,20 @@ def run_sweep(inst, filename, cfg):
 
         inst.write(':DISP:WIND1:TRAC1:Y:AUTO')
         inst.write(':DISP:WIND1:TRAC2:Y:AUTO')
+        inst.write(':DISP:WIND1:TRAC3:Y:AUTO')
+        inst.write(':DISP:WIND1:TRAC4:Y:AUTO')
 
-        y = query(':CALC1:DATA:RDAT?')
+        def query_trace(trace_no, imag=False):
+            inst.write(f':CALC1:PAR{trace_no}:SEL')
+            skip = 1 if imag else 2
+            return query(':CALC1:DATA:RDAT?')[::skip]
+
+        y = query_trace(1, True)
         yx[:,i] = y[::2]
         yr[:,i] = y[1::2]
 
+        oscillator_current_measurement[:,i] = query_trace(3)
+        oscillator_voltage_measurement[:,i] = query_trace(4)
         # Get DC Bias current and voltage measurement
         if cfg.bias_voltage != 0:
             bias_current_measurement[0,i] = \
@@ -296,6 +307,8 @@ def run_sweep(inst, filename, cfg):
         'biasCurrentMeasurement': bias_current_measurement,
         'biasVoltageMeasurement': bias_voltage_measurement,
         'oscillatorVoltage': cfg.oscillator_voltage,
+        'oscillatorCurrentMeasurement': oscillator_current_measurement,
+        'oscillatorVoltageMeasurement': oscillator_voltage_measurement,
         'measurementSpeed': cfg.measurement_speed,
         'numberOfSweepAverages': cfg.number_of_sweep_averages,
         'numberOfPointAverages': cfg.number_of_point_averages,
@@ -364,8 +377,11 @@ class PlotYY:
 
 def configure_sweep_parameters(inst, cfg):
     """Configure instrument with specified sweep parameters."""
+    inst.write(':CALC1:PAR:COUN 4')
     inst.write(':CALC1:PAR1:DEF R')
     inst.write(':CALC1:PAR2:DEF X')
+    inst.write(':CALC1:PAR3:DEF IAC')
+    inst.write(':CALC1:PAR4:DEF VAC')
     if cfg.segments is not None:
         inst.write(':SENS1:SWE:TYPE SEGM')
         segments = numpy.array(to_int(cfg.segments))
